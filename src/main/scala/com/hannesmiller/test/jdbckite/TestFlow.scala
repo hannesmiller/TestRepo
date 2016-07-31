@@ -14,6 +14,10 @@ object TestFlow extends App {
   val route = new RouteBuilder {
     override def configure(): Unit = {
       from("direct:start")
+        .threads(5, 10)
+        .split()
+        .body()
+        .streaming()
         .doTry()
         /*
         .process {
@@ -25,9 +29,9 @@ object TestFlow extends App {
         }
         */
         .setBody(simple("insert into person(firstName, lastName) values('${header.firstName}','${header.lastName}')"))
-        .to("direct:dataSource")
+        .to("direct:dataSource1")
         .setBody(simple("select * from person where id in (select max(id) from person)"))
-        .to("direct:dataSource")
+        .to("direct:dataSource2")
         .doCatch(classOf[Exception])
         .process {
           new Processor {
@@ -39,11 +43,21 @@ object TestFlow extends App {
         .doFinally()
         .endDoTry()
 
-      from("direct:dataSource")
+      from("direct:dataSource1")
         .process {
           new Processor {
             override def process(exchange: Exchange): Unit = {
-              println(exchange.getIn.getBody)
+              println(Thread.currentThread().getName + " - d1: " + exchange.getIn.getBody)
+              Thread.sleep(100L)
+            }
+          }
+        }
+
+      from("direct:dataSource2")
+        .process {
+          new Processor {
+            override def process(exchange: Exchange): Unit = {
+              println(Thread.currentThread().getName + " - d2: " + exchange.getIn.getBody)
             }
           }
         }
@@ -57,8 +71,9 @@ object TestFlow extends App {
   val headers = new util.LinkedHashMap[String, AnyRef]()
   headers.put("firstName", "hannes")
   headers.put("lastName", "miller")
-  template.sendBodyAndHeaders("hello world", headers)
 
+  template.sendBodyAndHeaders("hello there", headers)
+  template.sendBodyAndHeaders("hello there", headers)
 
   Thread.sleep(5000L)
 }
